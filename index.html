@@ -446,9 +446,11 @@
                             match = [item.en];
                             effect = item.ko;
                         } else {
-                            display = item.ko;
-                            match = [item.en];
-                            effect = item.en;
+                            display = item.en; 
+                            let cleanStr = item.ko.replace(/\([^)]*\)/g, ''); 
+                            answers = cleanStr.split(/[,;]/).map(s => s.trim()).filter(s => s.length > 0);
+                            match = answers.length > 0 ? answers : [item.ko.trim()];
+                            effect = item.ko;
                         }
                     }
                     return { display, match, effect };
@@ -528,9 +530,11 @@
                 this.gameState.score = 0;
                 this.gameState.combo = 0;
                 this.activeWords = [];
+                
+                this.gameState.currentSpeed = UserConfig.initialSpeed;
+
                 this.initWordBag();
 
-                // UI 업데이트: 로고 숨기기
                 this.ui.appLogoGroup.classList.add('hidden');
                 
                 this.ui.startScreen.classList.add('hidden');
@@ -733,6 +737,9 @@
             saveOptions() {
                 UserConfig.inputMode = this.ui.optModeWord.classList.contains('bg-violet-600') ? 'word' : 'meaning';
                 UserConfig.initialSpeed = parseFloat(this.ui.speedSlider.value);
+                
+                this.gameState.currentSpeed = UserConfig.initialSpeed;
+
                 this.ui.optionsModal.classList.add('hidden');
                 this.processWords();
             }

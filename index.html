@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VOCA STACK M: 모바일 단어 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;700&family=Roboto+Mono:wght@400;700&display=swap');
+        
+        /* 모바일 터치 스크롤 방지 및 기본 설정 */
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            background-color: #0f172a;
+            color: #e2e8f0;
+            overflow: hidden; /* 스크롤 방지 */
+            touch-action: none; /* 줌/팬 방지 */
+            height: 100dvh; /* 모바일 동적 뷰포트 높이 사용 */
+            width: 100vw;
+        }
+
+        /* 네온 텍스트 효과 */
+        .neon-text { text-shadow: 0 0 5px #fff, 0 0 10px #8b5cf6; }
+        
+        /* 떨어지는 단어 스타일 (모바일용 폰트 조정) */
+        .word-block {
+            position: absolute;
+            color: #ffffff;
+            font-family: 'Roboto Mono', 'Noto Sans KR', monospace;
+            font-weight: bold;
+            font-size: 0.95rem; /* PC보다 약간 작게 */
+            text-shadow: 0 0 2px rgba(0,0,0,0.8);
+            background: rgba(30, 41, 59, 0.95);
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            white-space: nowrap;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            will-change: transform;
+        }
+
+        .word-block.stacked {
+            background: rgba(51, 65, 85, 0.95);
+            border-color: #64748b;
+            color: #cbd5e1;
+        }
+
+        /* 이펙트 스타일 */
+        .meaning-afterimage {
+            position: absolute;
+            font-family: 'Noto Sans KR', sans-serif;
+            font-weight: bold;
+            font-size: 1rem;
+            white-space: nowrap;
+            padding: 4px 8px;
+            border-radius: 4px;
+            z-index: 20;
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.15);
+            border: 2px solid #fbbf24;
+            animation: fadeOutBlock 0.6s ease-out forwards;
+        }
+
+        @keyframes fadeOutBlock {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.15); }
+        }
+
+        /* 게임 오버 라인 (천장) */
+        .danger-line {
+            position: absolute;
+            top: 60px; /* 헤더 높이만큼 */
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #ef4444, transparent);
+            box-shadow: 0 0 10px #ef4444;
+            z-index: 5;
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        /* 메인 게임 영역 */
+        .game-container {
+            position: relative;
+            width: 100%;
+            flex: 1; /* 남은 공간 모두 차지 */
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            overflow: hidden;
+        }
+
+        /* 하단 입력바 (키보드 위 고정) */
+        .input-bar {
+            background: #1e293b;
+            padding: 10px;
+            padding-bottom: max(10px, env(safe-area-inset-bottom)); /* 아이폰 하단 바 대응 */
+            display: flex;
+            gap: 8px;
+            border-top: 1px solid #334155;
+            z-index: 50;
+        }
+
+        /* 모달 스타일 */
+        .modal-overlay {
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            z-index: 100;
+        }
+
+        /* 슬라이더 스타일 */
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            background: transparent; 
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #8b5cf6;
+            margin-top: -10px; 
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #475569;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="flex flex-col">
+
+    <!-- Header (Minimal) -->
+    <header class="h-[50px] flex items-center justify-between px-4 bg-slate-900 border-b border-slate-800 z-30 shrink-0">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-layer-group text-violet-400"></i>
+            <span class="font-bold text-violet-100 text-sm tracking-widest">VOCA M</span>
+        </div>
+        
+        <div class="flex gap-3 text-sm">
+            <div class="flex items-center gap-1 text-yellow-400">
+                <i class="fas fa-star text-xs"></i>
+                <span id="scoreDisplay" class="font-mono font-bold">0</span>
+            </div>
+            <div class="w-px h-4 bg-slate-700 my-auto"></div>
+            <button onclick="GameApp.openOptions()" class="text-slate-400 hover:text-white">
+                <i class="fas fa-cog"></i>
+            </button>
+            <button id="pauseBtn" class="text-yellow-500 hidden">
+                <i class="fas fa-pause"></i>
+            </button>
+            <button onclick="GameApp.resetGame()" id="stopBtn" class="text-red-500 hidden">
+                <i class="fas fa-stop"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- Game Area -->
+    <main id="gameArea" class="game-container relative w-full">
+        <!-- Danger Line -->
+        <div class="danger-line"></div>
+        <div class="absolute top-[65px] right-2 text-[10px] text-red-500 opacity-70 tracking-widest">LIMIT LINE</div>
+
+        <!-- Start Screen -->
+        <div id="startScreen" class="absolute inset-0 flex flex-col items-center justify-center z-40 bg-slate-900/95 px-6 text-center">
+            <h2 class="text-4xl font-bold text-white neon-text mb-2">VOCA STACK</h2>
+            <p class="text-slate-400 text-xs mb-8">모바일 터치 최적화 버전</p>
+            
+            <div class="grid grid-cols-1 w-full gap-3 mb-6">
+                <button onclick="GameApp.startGame('normal')" class="w-full py-4 bg-violet-600 active:bg-violet-700 rounded-xl shadow-lg border border-violet-500 flex items-center justify-center gap-3">
+                    <i class="fas fa-play"></i> <span class="font-bold">게임 시작</span>
+                </button>
+                <button onclick="GameApp.startGame('practice')" class="w-full py-4 bg-emerald-600 active:bg-emerald-700 rounded-xl shadow-lg border border-emerald-500 flex items-center justify-center gap-3">
+                    <i class="fas fa-infinity"></i> <span class="font-bold">연습 모드 (무제한)</span>
+                </button>
+            </div>
+
+            <div class="flex gap-2 w-full">
+                <input type="file" id="fileInput" accept=".txt,.csv" class="hidden">
+                <button onclick="document.getElementById('fileInput').click()" class="flex-1 py-3 bg-slate-700 rounded-lg text-sm border border-slate-600">
+                    <i class="fas fa-folder-open text-green-400 mr-1"></i> 파일 열기
+                </button>
+                <button onclick="GameApp.openOptions()" class="flex-1 py-3 bg-slate-700 rounded-lg text-sm border border-slate-600">
+                    <i class="fas fa-cog text-slate-300 mr-1"></i> 옵션
+                </button>
+            </div>
+            
+            <div class="mt-4 text-xs text-slate-500">
+                현재: <span id="currentWordListName" class="text-slate-300">기본 단어장</span> 
+                (<span id="currentWordCount">0</span>개)
+            </div>
+        </div>
+    </main>
+
+    <!-- Input Bar (Fixed Bottom) -->
+    <div class="input-bar shrink-0">
+        <input type="text" id="wordInput" 
+            class="flex-1 bg-slate-800 text-white px-4 py-3 rounded-lg border border-slate-600 focus:border-violet-500 focus:outline-none text-lg"
+            placeholder="터치하여 입력..." autocomplete="off" disabled>
+        
+        <button id="fireBtn" class="bg-violet-600 text-white px-5 rounded-lg active:bg-violet-700 active:scale-95 transition-transform flex items-center justify-center disabled:opacity-50 disabled:active:scale-100">
+            <i class="fas fa-paper-plane text-xl"></i>
+        </button>
+    </div>
+
+    <!-- Options Modal -->
+    <div id="optionsModal" class="fixed inset-0 modal-overlay hidden flex items-center justify-center p-4">
+        <div class="bg-slate-800 w-full max-w-sm rounded-2xl p-6 border border-slate-600 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold text-white mb-4 border-b border-slate-700 pb-2">설정</h3>
+            
+            <!-- Input Mode -->
+            <div class="mb-5">
+                <label class="text-xs text-slate-400 mb-2 block">게임 방식</label>
+                <div class="flex rounded-lg overflow-hidden border border-slate-600">
+                    <button onclick="GameApp.setInputMode('word')" id="optModeWord" class="flex-1 py-2 text-sm bg-violet-600 text-white font-bold">그대로 치기</button>
+                    <button onclick="GameApp.setInputMode('meaning')" id="optModeMean" class="flex-1 py-2 text-sm bg-slate-700 text-slate-300">뜻 맞히기</button>
+                </div>
+            </div>
+
+            <!-- Speed -->
+            <div class="mb-5">
+                <div class="flex justify-between mb-1">
+                    <label class="text-xs text-slate-400">낙하 속도</label>
+                    <span id="speedValue" class="text-violet-400 font-bold text-xs">1.0</span>
+                </div>
+                <input type="range" id="speedSlider" min="0.5" max="5.0" step="0.1" value="1.0" class="w-full">
+            </div>
+
+            <button onclick="GameApp.saveOptions()" class="w-full py-3 bg-violet-600 rounded-xl text-white font-bold mt-2">확인</button>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverModal" class="fixed inset-0 modal-overlay hidden flex items-center justify-center p-6">
+        <div class="bg-slate-800 w-full max-w-xs rounded-2xl p-6 text-center border border-slate-600 shadow-2xl">
+            <div class="text-5xl mb-4 text-red-500 animate-pulse"><i class="fas fa-skull"></i></div>
+            <h2 class="text-2xl font-bold text-white mb-1">GAME OVER</h2>
+            <p class="text-slate-400 text-sm mb-6">스택이 한계선에 도달했습니다.</p>
+            
+            <div class="bg-slate-900 rounded-lg p-3 mb-6 grid grid-cols-2 gap-2 text-sm">
+                <div class="text-slate-400">점수</div>
+                <div id="finalScore" class="font-bold text-violet-400 text-right">0</div>
+                <div class="text-slate-400">최대 콤보</div>
+                <div id="finalCombo" class="font-bold text-green-400 text-right">0</div>
+            </div>
+
+            <button onclick="GameApp.resetGame()" class="w-full py-3 bg-white text-slate-900 rounded-xl font-bold">
+                메인으로
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 모바일 환경에 맞춘 기본 설정
+        const UserConfig = {
+            initialSpeed: 0.8,      // 모바일이라 조금 느리게 시작
+            initialSpawnRate: 2200, // 생성 간격도 여유있게
+            spawnMode: 'cycle',
+            inputMode: 'word',
+            levelUpScore: 200,
+            ceilingHeight: 60       // 헤더 높이와 비슷하게 맞춤
+        };
+
+        const RawDefaultWords = [
+            { en: "love", ko: "사랑" }, { en: "friend", ko: "친구" }, { en: "school", ko: "학교" },
+            { en: "music", ko: "음악" }, { en: "movie", ko: "영화" }, { en: "coffee", ko: "커피" },
+            { en: "dream", ko: "꿈" }, { en: "happy", ko: "행복한" }, { en: "travel", ko: "여행" },
+            { en: "book", ko: "책" }, { en: "phone", ko: "전화기" }, { en: "world", ko: "세계" }
+        ];
+
+        class Game {
+            constructor() {
+                this.sourceData = [...RawDefaultWords]; 
+                this.words = [];
+                this.wordBag = [];
+                this.activeWords = [];
+                this.gameState = {
+                    mode: null,
+                    score: 0,
+                    level: 1,
+                    isPlaying: false,
+                    isPaused: false,
+                    combo: 0,
+                    maxCombo: 0,
+                    currentSpeed: UserConfig.initialSpeed,
+                    currentSpawnRate: UserConfig.initialSpawnRate
+                };
+
+                this.lastTime = 0;
+                this.spawnTimer = 0;
+                this.animationFrameId = null;
+                
+                // UI Elements
+                this.ui = {
+                    startScreen: document.getElementById('startScreen'),
+                    gameArea: document.getElementById('gameArea'),
+                    input: document.getElementById('wordInput'),
+                    fireBtn: document.getElementById('fireBtn'),
+                    score: document.getElementById('scoreDisplay'),
+                    gameOverModal: document.getElementById('gameOverModal'),
+                    finalScore: document.getElementById('finalScore'),
+                    finalCombo: document.getElementById('finalCombo'),
+                    wordCount: document.getElementById('currentWordCount'),
+                    listName: document.getElementById('currentWordListName'),
+                    pauseBtn: document.getElementById('pauseBtn'),
+                    stopBtn: document.getElementById('stopBtn'),
+                    fileInput: document.getElementById('fileInput'),
+                    optionsModal: document.getElementById('optionsModal'),
+                    speedSlider: document.getElementById('speedSlider'),
+                    speedValue: document.getElementById('speedValue'),
+                    optModeWord: document.getElementById('optModeWord'),
+                    optModeMean: document.getElementById('optModeMean')
+                };
+
+                this.processWords();
+                this.initEventListeners();
+                this.updateWordCount();
+            }
+
+            // CSV/데이터 파싱 (3열 지원)
+            processWords() {
+                this.words = this.sourceData.map(item => {
+                    let display, match, effect;
+                    let answers = [];
+
+                    // 1. 3열 데이터(display, match, effect)가 있는 경우
+                    if (item.display && item.match && item.effect) {
+                        effect = item.effect; // 잔상은 항상 3열(뜻)
+
+                        if (UserConfig.inputMode === 'word') {
+                            // 그대로 치기: 1열 보여주고 1열 입력
+                            display = item.display;
+                            match = [item.display];
+                        } else {
+                            // 뜻 맞히기: 1열 보여주고 2열 입력
+                            display = item.display;
+                            // 정답(2열) 파싱
+                            let rawMatch = item.match;
+                            let cleanStr = rawMatch.replace(/\([^)]*\)/g, ''); 
+                            answers = cleanStr.split(/[,;]/).map(s => s.trim()).filter(s => s.length > 0);
+                            match = answers.length > 0 ? answers : [rawMatch.trim()];
+                        }
+                    }
+                    // 2. 2열 데이터(en, ko)인 경우
+                    else {
+                        display = item.en;
+                        if (UserConfig.inputMode === 'word') {
+                            match = [item.en];
+                            effect = item.ko;
+                        } else {
+                            // 뜻 맞히기
+                            let cleanStr = item.ko.replace(/\([^)]*\)/g, '');
+                            answers = cleanStr.split(/[,;]/).map(s => s.trim()).filter(s => s.length > 0);
+                            match = answers.length > 0 ? answers : [cleanStr.trim()];
+                            effect = `${item.en}\n${item.ko}`;
+                        }
+                    }
+
+                    return { display, match, effect };
+                });
+            }
+
+            initEventListeners() {
+                // 입력 처리 (Enter키 + 버튼 클릭)
+                const handleInput = () => {
+                    if (this.gameState.isPlaying && !this.gameState.isPaused) {
+                        this.checkInput(this.ui.input.value.trim());
+                        this.ui.input.value = '';
+                        this.ui.input.focus(); // 모바일에서 포커스 유지
+                    }
+                };
+
+                this.ui.input.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') handleInput();
+                });
+                this.ui.fireBtn.addEventListener('click', (e) => {
+                    e.preventDefault(); // 포커스 잃음 방지 시도
+                    handleInput();
+                });
+
+                // 파일 로드
+                this.ui.fileInput.addEventListener('change', (e) => this.loadFile(e));
+                
+                // 일시정지
+                this.ui.pauseBtn.addEventListener('click', () => this.togglePause());
+
+                // 슬라이더 UI 업데이트
+                this.ui.speedSlider.addEventListener('input', (e) => {
+                    this.ui.speedValue.innerText = parseFloat(e.target.value).toFixed(1);
+                });
+            }
+
+            loadFile(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const content = e.target.result;
+                    const lines = content.split('\n');
+                    const newSourceData = [];
+
+                    lines.forEach(line => {
+                        let trimmedLine = line.trim();
+                        if (!trimmedLine) return;
+                        
+                        // 간단한 CSV 파싱 (따옴표 처리 제외, 쉼표 기준)
+                        // 복잡한 CSV는 정규식 필요하지만 모바일 성능 고려 단순화
+                        // 3열: A,B,C -> [A, B, C]
+                        const parts = trimmedLine.split(',').map(s=>s.trim());
+                        
+                        if (parts.length >= 3) {
+                            newSourceData.push({
+                                display: parts[0],
+                                match: parts[1],
+                                effect: parts.slice(2).join(',')
+                            });
+                        } else if (parts.length >= 2) {
+                            newSourceData.push({ en: parts[0], ko: parts[1] });
+                        }
+                    });
+
+                    if (newSourceData.length > 0) {
+                        this.sourceData = newSourceData;
+                        this.processWords();
+                        this.ui.listName.innerText = file.name;
+                        this.updateWordCount();
+                        alert(`단어 ${newSourceData.length}개를 불러왔습니다.`);
+                    }
+                };
+                reader.readAsText(file);
+                event.target.value = '';
+            }
+
+            updateWordCount() {
+                this.ui.wordCount.innerText = this.words.length;
+            }
+
+            startGame(mode) {
+                this.gameState.mode = mode;
+                this.gameState.isPlaying = true;
+                this.gameState.isPaused = false;
+                this.gameState.score = 0;
+                this.gameState.combo = 0;
+                this.activeWords = [];
+                this.initWordBag();
+
+                // UI 전환
+                this.ui.startScreen.classList.add('hidden');
+                this.ui.gameOverModal.classList.add('hidden');
+                this.ui.pauseBtn.classList.remove('hidden');
+                this.ui.stopBtn.classList.remove('hidden');
+                
+                this.ui.input.disabled = false;
+                this.ui.input.focus();
+                
+                this.ui.score.innerText = '0';
+                this.ui.gameArea.classList.remove('bg-red-900/30');
+
+                this.lastTime = performance.now();
+                this.gameLoop(this.lastTime);
+            }
+
+            initWordBag() {
+                this.wordBag = Array.from({length: this.words.length}, (_, i) => i);
+            }
+
+            getNextWord() {
+                if (UserConfig.spawnMode === 'random') {
+                    return this.words[Math.floor(Math.random() * this.words.length)];
+                }
+                if (this.wordBag.length === 0) this.initWordBag();
+                const bagIndex = Math.floor(Math.random() * this.wordBag.length);
+                const wordIndex = this.wordBag[bagIndex];
+                this.wordBag.splice(bagIndex, 1);
+                return this.words[wordIndex];
+            }
+
+            spawnWord() {
+                const wordData = this.getNextWord();
+                const gameWidth = this.ui.gameArea.clientWidth;
+                
+                // 폰트 크기 고려 대략적 폭 계산 (모바일 14px 기준)
+                const charWidth = 14; 
+                const estimatedWidth = (wordData.display.length * charWidth) + 16;
+                const minX = 5;
+                const maxX = gameWidth - estimatedWidth - 5;
+                const x = Math.random() * (maxX - minX) + minX;
+
+                const wordObj = {
+                    id: Date.now() + Math.random(),
+                    display: wordData.display,
+                    match: wordData.match,
+                    effect: wordData.effect,
+                    x: Math.max(minX, Math.min(x, maxX)), // 화면 밖 이탈 방지
+                    y: -40,
+                    width: estimatedWidth,
+                    height: 30,
+                    isStacked: false,
+                    element: null
+                };
+
+                const el = document.createElement('div');
+                el.className = 'word-block';
+                el.innerText = wordObj.display;
+                el.style.left = `${wordObj.x}px`;
+                el.style.transform = `translateY(${wordObj.y}px)`;
+                this.ui.gameArea.appendChild(el);
+                
+                // 실제 렌더링 후 크기 보정
+                wordObj.width = el.offsetWidth;
+                wordObj.element = el;
+
+                this.activeWords.push(wordObj);
+            }
+
+            gameLoop(timestamp) {
+                if (!this.gameState.isPlaying || this.gameState.isPaused) return;
+
+                const deltaTime = timestamp - this.lastTime;
+                this.lastTime = timestamp;
+
+                // 단어 생성
+                this.spawnTimer += deltaTime;
+                if (this.spawnTimer > this.gameState.currentSpawnRate) {
+                    this.spawnWord();
+                    this.spawnTimer = 0;
+                }
+
+                // 모바일 키보드 높이 가변 대응: 게임 영역의 실제 높이 매번 확인
+                const gameHeight = this.ui.gameArea.clientHeight;
+                const floorY = gameHeight - 10; // 바닥 여유분
+
+                // 단어 이동 및 충돌
+                for (let i = 0; i < this.activeWords.length; i++) {
+                    const word = this.activeWords[i];
+                    if (word.isStacked) continue; // 이미 쌓인 단어는 계산 안함 (최적화)
+
+                    const moveAmount = this.gameState.currentSpeed * (deltaTime / 16);
+                    let newY = word.y + moveAmount;
+                    let hasLanded = false;
+
+                    // 1. 바닥 충돌
+                    if (newY + word.height >= floorY) {
+                        newY = floorY - word.height;
+                        hasLanded = true;
+                    }
+
+                    // 2. 다른 단어 위 충돌 (간단한 AABB 충돌)
+                    if (!hasLanded) {
+                        for (const other of this.activeWords) {
+                            if (other === word || !other.isStacked) continue;
+                            
+                            // 겹침 허용 범위 (관용)
+                            const tolerance = 5; 
+                            const xOverlap = (word.x < other.x + other.width - tolerance) && 
+                                             (word.x + word.width > other.x + tolerance);
+                            
+                            if (xOverlap) {
+                                // 내 아래에 다른 단어가 있는가?
+                                if (word.y + word.height <= other.y && newY + word.height >= other.y) {
+                                    newY = other.y - word.height;
+                                    hasLanded = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    word.y = newY;
+                    if (word.element) {
+                        word.element.style.transform = `translateY(${word.y}px)`;
+                    }
+
+                    if (hasLanded) {
+                        word.isStacked = true;
+                        if (word.element) word.element.classList.add('stacked');
+                        
+                        // 게임 오버 체크 (천장 도달)
+                        if (word.y <= UserConfig.ceilingHeight) {
+                            if (this.gameState.mode === 'practice') {
+                                this.removeWord(word, true); // 연습모드는 그냥 삭제
+                            } else {
+                                this.gameOver();
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // 스택 안정성 체크 (쌓인 단어가 사라졌을 때 떨어지게)
+                this.checkStackGravity(floorY);
+
+                this.animationFrameId = requestAnimationFrame((t) => this.gameLoop(t));
+            }
+
+            checkStackGravity(floorY) {
+                this.activeWords.forEach(word => {
+                    if (!word.isStacked) return;
+                    if (Math.abs((word.y + word.height) - floorY) < 2) return; // 바닥에 있으면 패스
+                    
+                    let supported = false;
+                    for (const other of this.activeWords) {
+                        if (other === word || !other.isStacked) continue;
+                        // 바로 아래에 받쳐주는 단어가 있는지 확인
+                        if (Math.abs((word.y + word.height) - other.y) < 3) {
+                             const tolerance = 5;
+                             if ((word.x < other.x + other.width - tolerance) && 
+                                 (word.x + word.width > other.x + tolerance)) {
+                                supported = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!supported) {
+                        word.isStacked = false;
+                        if (word.element) word.element.classList.remove('stacked');
+                    }
+                });
+            }
+
+            checkInput(inputText) {
+                if (!inputText) return;
+                const matches = this.activeWords.filter(w => 
+                    w.match.some(ans => ans.toLowerCase() === inputText.toLowerCase())
+                );
+
+                if (matches.length > 0) {
+                    // 가장 아래(y값 큰거)부터 제거
+                    matches.sort((a, b) => b.y - a.y);
+                    const target = matches[0];
+                    this.removeWord(target);
+                    this.addScore();
+                }
+            }
+
+            removeWord(wordObj, isSilent = false) {
+                this.activeWords = this.activeWords.filter(w => w.id !== wordObj.id);
+                if (wordObj.element) wordObj.element.remove();
+
+                if (!isSilent) {
+                    // 잔상 효과
+                    const effect = document.createElement('div');
+                    effect.className = 'meaning-afterimage';
+                    effect.innerText = wordObj.effect;
+                    effect.style.left = `${wordObj.x}px`;
+                    effect.style.top = `${wordObj.y}px`;
+                    this.ui.gameArea.appendChild(effect);
+                    setTimeout(() => effect.remove(), 600);
+                }
+            }
+
+            addScore() {
+                this.gameState.score += 10 + (this.gameState.combo * 2);
+                this.gameState.combo++;
+                this.ui.score.innerText = this.gameState.score;
+                
+                // 레벨업 (속도 증가)
+                if (this.gameState.score > this.gameState.level * UserConfig.levelUpScore) {
+                    this.gameState.level++;
+                    this.gameState.currentSpeed += 0.1;
+                }
+            }
+
+            gameOver() {
+                this.gameState.isPlaying = false;
+                cancelAnimationFrame(this.animationFrameId);
+                this.ui.input.disabled = true;
+                this.ui.input.blur(); // 키보드 내리기
+                
+                this.ui.finalScore.innerText = this.gameState.score;
+                this.ui.finalCombo.innerText = this.gameState.combo;
+                this.ui.gameOverModal.classList.remove('hidden');
+                this.ui.gameArea.classList.add('bg-red-900/30');
+            }
+
+            resetGame() {
+                this.gameState.isPlaying = false;
+                this.gameState.isPaused = false;
+                cancelAnimationFrame(this.animationFrameId);
+
+                document.querySelectorAll('.word-block, .meaning-afterimage').forEach(el => el.remove());
+                this.activeWords = [];
+                
+                this.ui.gameArea.classList.remove('bg-red-900/30');
+                this.ui.gameOverModal.classList.add('hidden');
+                this.ui.startScreen.classList.remove('hidden');
+                this.ui.pauseBtn.classList.add('hidden');
+                this.ui.stopBtn.classList.add('hidden');
+                this.ui.input.value = '';
+                this.ui.input.disabled = true;
+                
+                // 옵션 초기화된 상태라면 다시 읽기
+                this.gameState.currentSpeed = UserConfig.initialSpeed;
+            }
+
+            // 옵션 관련
+            openOptions() {
+                this.ui.optionsModal.classList.remove('hidden');
+                if (this.gameState.isPlaying) this.togglePause();
+            }
+            saveOptions() {
+                UserConfig.inputMode = this.ui.optModeWord.classList.contains('bg-violet-600') ? 'word' : 'meaning';
+                UserConfig.initialSpeed = parseFloat(this.ui.speedSlider.value);
+                
+                // 데이터 재파싱 필요 (모드 변경 시)
+                this.processWords();
+                this.ui.optionsModal.classList.add('hidden');
+                
+                // 게임 중이면 리셋 권장
+                if (this.activeWords.length > 0) {
+                     // 리셋 로직 대신 모드만 변경된 채 계속? -> 혼란 방지 위해 리셋 추천
+                     // 여기선 닫기만 함.
+                }
+            }
+            setInputMode(mode) {
+                if (mode === 'word') {
+                    this.ui.optModeWord.className = 'flex-1 py-2 text-sm bg-violet-600 text-white font-bold';
+                    this.ui.optModeMean.className = 'flex-1 py-2 text-sm bg-slate-700 text-slate-300';
+                } else {
+                    this.ui.optModeWord.className = 'flex-1 py-2 text-sm bg-slate-700 text-slate-300';
+                    this.ui.optModeMean.className = 'flex-1 py-2 text-sm bg-violet-600 text-white font-bold';
+                }
+            }
+            togglePause() {
+                if(!this.gameState.isPlaying) return;
+                this.gameState.isPaused = !this.gameState.isPaused;
+                this.ui.pauseBtn.innerHTML = this.gameState.isPaused ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
+                
+                if(!this.gameState.isPaused) {
+                    this.lastTime = performance.now();
+                    this.gameLoop(this.lastTime);
+                }
+            }
+        }
+
+        const GameApp = new Game();
+    </script>
+</body>
+</html>

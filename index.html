@@ -339,7 +339,7 @@
 
         const UserConfig = {
             initialSpeed: 0.6,
-            initialSpawnRate: 3000,
+            // initialSpawnRate: 3000,
             inputMode: 'word',
             levelUpScore: 200,
             rowHeight: 40, 
@@ -353,9 +353,11 @@
                 this.activeWords = [];
                 this.gameState = {
                     score: 0, level: 1, isPlaying: false, isPaused: false, combo: 0,
-                    currentSpeed: UserConfig.initialSpeed,
-                    currentSpawnRate: UserConfig.initialSpawnRate
+                    currentSpeed: UserConfig.initialSpeed
+                    // currentSpawnRate: UserConfig.initialSpawnRate
                 };
+                
+                this.currentMovingWord = null;
                 
                 this.ui = {
                     startScreen: document.getElementById('startScreen'),
@@ -530,6 +532,7 @@
                 this.gameState.score = 0;
                 this.gameState.combo = 0;
                 this.activeWords = [];
+                this.currentMovingWord = null;
                 
                 this.gameState.currentSpeed = UserConfig.initialSpeed;
 
@@ -572,7 +575,7 @@
 
                 const width = el.offsetWidth;
                 
-                this.activeWords.push({
+                const newWord = {
                     id: Math.random(),
                     data: wordData,
                     x: -150,
@@ -582,7 +585,10 @@
                     row: randomRow,
                     element: el,
                     isStacked: false
-                });
+                };
+
+                this.activeWords.push(newWord);
+                this.currentMovingWord = newWord;
             }
 
             gameLoop(timestamp) {
@@ -590,15 +596,12 @@
                 const deltaTime = timestamp - this.lastTime;
                 this.lastTime = timestamp;
 
-                this.gameState.spawnTimer = (this.gameState.spawnTimer || 0) + deltaTime;
-                if (this.gameState.spawnTimer > this.gameState.currentSpawnRate) {
+                if (!this.currentMovingWord) {
                     this.spawnWord();
-                    this.gameState.spawnTimer = 0;
                 }
 
                 const gameWidth = this.ui.gameArea.clientWidth;
 
-                // 스택 안정성 체크 (중력 기능)
                 this.checkStackStability(gameWidth);
 
                 this.activeWords.forEach(word => {
@@ -608,13 +611,11 @@
                     let newX = word.x + move;
                     let hasLanded = false;
 
-                    // 1. 오른쪽 벽 충돌
                     if (newX + word.width >= gameWidth) {
                         newX = gameWidth - word.width;
                         hasLanded = true;
                     }
 
-                    // 2. 같은 행 충돌 체크
                     if (!hasLanded) {
                         for (const other of this.activeWords) {
                             if (other === word || !other.isStacked) continue;
@@ -634,6 +635,11 @@
                     if (hasLanded) {
                         word.isStacked = true;
                         word.element.classList.add('stacked');
+                        
+                        if (this.currentMovingWord === word) {
+                            this.currentMovingWord = null;
+                        }
+
                         if (word.x <= UserConfig.limitX) {
                             if (this.gameState.mode === 'practice') {
                                 this.removeWord(word);
@@ -651,10 +657,8 @@
                 this.activeWords.forEach(word => {
                     if (!word.isStacked) return;
                     
-                    // 1. 오른쪽 벽에 붙어있으면 안정적
                     if (word.x + word.width >= gameWidth - 2) return; 
 
-                    // 2. 오른쪽에 받쳐주는 블록이 있는지 확인
                     let hasSupport = false;
                     for (const other of this.activeWords) {
                         if (other === word || !other.isStacked) continue;
@@ -692,6 +696,10 @@
                 this.activeWords = this.activeWords.filter(w => w.id !== word.id);
                 word.element.remove();
                 
+                if (this.currentMovingWord === word) {
+                    this.currentMovingWord = null;
+                }
+                
                 const effect = document.createElement('div');
                 effect.className = 'meaning-afterimage';
                 effect.innerText = word.data.effect;
@@ -720,6 +728,7 @@
                 this.gameState.isPaused = false;
                 this.activeWords.forEach(w => w.element.remove());
                 this.activeWords = [];
+                this.currentMovingWord = null;
                 document.querySelectorAll('.meaning-afterimage').forEach(el => el.remove());
 
                 this.ui.appLogoGroup.classList.remove('hidden');

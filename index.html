@@ -751,7 +751,14 @@
                 if (!this.gameState.isPlaying) return;
                 this.gameState.isPaused = !this.gameState.isPaused;
                 this.ui.pauseBtn.innerHTML = this.gameState.isPaused ? '<i class="fas fa-play"></i>' : '<i class="fas fa-pause"></i>';
-                if (!this.gameState.isPaused) {
+                
+                if (this.gameState.isPaused) {
+                    this.ui.input.disabled = true;
+                    this.ui.input.placeholder = "일시정지";
+                } else {
+                    this.ui.input.disabled = false;
+                    this.ui.input.placeholder = "입력...";
+                    this.ui.input.focus();
                     this.lastTime = performance.now();
                     this.gameLoop(this.lastTime);
                 }
